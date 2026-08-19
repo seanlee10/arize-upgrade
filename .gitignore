@@ -1,0 +1,6 @@
+values.yaml
+.env
+__pycache__/
+*.pyc
+.venv/
+arize-distribution-*/
