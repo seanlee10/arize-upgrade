@@ -21,16 +21,12 @@ class SlackApiError(RuntimeError):
 
 def render_blocks(notification: Notification) -> list[dict[str, Any]]:
     icon = _STATUS_ICON[notification.status]
-    # Only prepend icon for outcome statuses (success/failure), not info
-    title_text = notification.title
-    if notification.status != "info":
-        title_text = f"{icon} {title_text}"
     blocks: list[dict[str, Any]] = [
         {
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": title_text[:150],
+                "text": f"{icon} {notification.title}"[:150],
                 "emoji": True,
             },
         }
