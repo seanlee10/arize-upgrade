@@ -112,3 +112,15 @@ def test_a_queued_run_counts_as_in_progress():
 def test_completed_runs_do_not_count():
     run = runner([FakeResult(stdout=json.dumps([{"status": "completed"}]))])
     assert upgrade_in_progress(run=run) is False
+
+
+def test_upgrade_in_progress_fails_safe_when_gh_errors():
+    # A gh outage must read as "something is running", never as "all clear" —
+    # returning False here would let a second upgrade start concurrently.
+    run = runner([FakeResult(returncode=1, stderr="gh: rate limited")])
+    assert upgrade_in_progress(run=run) is True
+
+
+def test_malformed_versions_under_the_prefix_are_skipped_not_fatal():
+    run = runner([FakeResult(stdout=releases_json("deployed/garbage", "deployed/11.41.0"))])
+    assert read_deployed_version({}, run=run) == Version(11, 41, 0)
