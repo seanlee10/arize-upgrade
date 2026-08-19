@@ -781,7 +781,12 @@ def _blocks_of_type(blocks, kind):
 
 def test_title_is_rendered_as_a_header():
     header = _blocks_of_type(render_blocks(NOTIFICATION), "header")[0]
-    assert header["text"]["text"] == "Arize 11.43.0 available"
+    assert "Arize 11.43.0 available" in header["text"]["text"]
+
+
+def test_info_status_is_visible_in_the_header():
+    info = Notification(title="Arize 11.43.0 available", fields={}, status="info")
+    assert "\U0001f4e6" in str(render_blocks(info))
 
 
 def test_fields_are_rendered():
@@ -1025,7 +1030,7 @@ class SlackNotifier:
 .venv/bin/pytest tests/test_notify_slack.py -q
 ```
 
-Expected: PASS, 13 passed.
+Expected: PASS, 14 passed.
 
 - [ ] **Step 5: Commit**
 
