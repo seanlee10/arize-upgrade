@@ -82,3 +82,28 @@ def test_alert_is_a_failure_with_the_detail_in_the_body():
     assert notification.status == "failure"
     assert "no headings found" in notification.body
     assert notification.buttons[0].url == RUN_URL
+
+
+def test_failed_result_warns_there_is_no_rollback():
+    notification = messages.result(TARGET, False, "https://arize.example.com", RUN_URL)
+    body = notification.body.lower()
+    assert "no automatic rollback" in body
+    assert "partially upgraded" in body
+
+
+def test_detected_attributes_each_releases_notes_to_its_own_version():
+    notes = [
+        Release(Version(11, 42, 0), date(2026, 8, 11), "Pin your storage classes.", None),
+        Release(Version(11, 43, 0), date(2026, 8, 13), "Rotate the cipher key.", None),
+    ]
+    body = messages.detected(CURRENT, TARGET, notes, RUN_URL).body
+    assert body.index("11.42.0") < body.index("Pin your storage classes.")
+    assert body.index("Pin your storage classes.") < body.index("11.43.0")
+    assert body.index("11.43.0") < body.index("Rotate the cipher key.")
+
+
+def test_releases_without_notes_are_skipped_not_rendered_as_none():
+    notes = [Release(Version(11, 42, 0), date(2026, 8, 11), None, "updates only")]
+    body = messages.detected(CURRENT, TARGET, notes, RUN_URL).body
+    assert "None" not in body
+    assert "No upgrade notes" in body

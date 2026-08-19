@@ -13,9 +13,15 @@ from .versions import Version
 
 def _format_notes(notes: list[Release]) -> str:
     if not notes:
-        return "_No upgrade notes between these versions._"
-    sections = [f"*{release.version}*\n{release.upgrade_notes}" for release in notes]
-    return "*Upgrade notes*\n\n" + "\n\n".join(sections)
+        return "No upgrade notes between these versions."
+    sections = [
+        f"{release.version}\n{release.upgrade_notes}"
+        for release in notes
+        if release.upgrade_notes is not None
+    ]
+    if not sections:
+        return "No upgrade notes between these versions."
+    return "Upgrade notes\n\n" + "\n\n".join(sections)
 
 
 def detected(
