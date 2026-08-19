@@ -22,6 +22,13 @@ class Button:
 
 @dataclass(frozen=True)
 class Notification:
+    """A provider-agnostic notification.
+
+    Frozen, but deliberately NOT hashable: `fields` is a dict, so `hash()`
+    raises. Nothing needs a Notification as a dict key; keeping `fields` a
+    plain dict is what makes every call site readable.
+    """
+
     title: str
     fields: dict[str, str] = field(default_factory=dict)
     body: str | None = None

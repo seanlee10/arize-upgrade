@@ -1,3 +1,5 @@
+import dataclasses
+
 import pytest
 
 from arize_upgrade.notify.base import Button, Notification
@@ -58,7 +60,7 @@ def test_teams_without_webhook_raises():
         build_notifier({"NOTIFY_PROVIDER": "teams"})
 
 
-def test_notification_is_frozen_and_hashable():
+def test_notification_is_frozen():
     notification = Notification(
         title="t",
         fields={},
@@ -66,6 +68,11 @@ def test_notification_is_frozen_and_hashable():
         buttons=(Button("Open", "https://example.com"),),
         status="info",
     )
-    assert hash(notification.buttons)
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         notification.title = "other"  # type: ignore[misc]
+
+
+def test_notification_is_not_hashable_because_fields_is_a_dict():
+    notification = Notification(title="t", fields={}, status="info")
+    with pytest.raises(TypeError):
+        hash(notification)
