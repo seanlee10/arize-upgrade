@@ -3087,7 +3087,7 @@ jobs:
           The upgrade to \`${TARGET}\` did not complete.
 
           - Run: ${RUN_URL}
-          - Image push: ${{ needs.push-images.result }}
+          - Image push: ${{ needs['push-images'].result }}
           - Install: ${{ needs.install.result }}
 
           There is no automatic rollback. The cluster may be partially upgraded.
