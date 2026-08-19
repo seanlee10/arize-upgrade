@@ -141,8 +141,17 @@ request-signature verification, and no interactivity service to operate.
 Triggers: `schedule: cron '0 9 * * 1-5'` (09:00 UTC, weekdays) and
 `workflow_dispatch`.
 
-1. Fetch the release page and parse H1 headings of the form
-   `Release X.Y.Z (YYYY-MM-DD)`.
+1. Fetch **<https://arize.com/docs/ax/selfhosting/on-premise-releases.md>** and
+   parse H1 headings of the form `# Release X.Y.Z (YYYY-MM-DD)`.
+
+   The docs site (Mintlify) serves a raw-markdown twin of every page. Verified:
+   `200 text/markdown`, 38 KB, 71 releases, each `# Release X.Y.Z (YYYY-MM-DD)`
+   followed by optional `## Upgrade Notes` and `## Updates` H2s, separated by
+   `***`. Older entries carry a trailing ` (Maintenance)` the parser must
+   tolerate. This is markedly more stable than the rendered HTML, where each
+   heading is wrapped in anchor markup and prefixed with a U+200B zero-width
+   space. The HTML page remains the documented fallback if the `.md` twin
+   disappears.
 2. **If zero versions parse, post an alert and fail the job.** A docs redesign
    must never be indistinguishable from "no new release."
 3. Read the deployed version from the newest GitHub Release tagged
@@ -327,8 +336,9 @@ Workflow YAML is validated with `actionlint`. Shell steps run under `set -euo pi
 
 ## Open risks
 
-1. **Release page structure is scraped, not an API.** Mitigated by failing loudly
-   on zero parses. A redesign will need a fixture and parser update.
+1. **Release notes are parsed, not an API.** The `.md` endpoint is an
+   undocumented Mintlify convention and could vanish. Mitigated by failing
+   loudly on zero parses, and by the HTML page as a fallback source.
 2. **Long-lived IAM keys** are stored as environment secrets. Scoped to the
    `cluster-install` and `image-push` environments so they are unavailable to
    unapproved jobs. OIDC remains the better option if EKS access entries allow it.
