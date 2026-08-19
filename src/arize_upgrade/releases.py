@@ -47,7 +47,7 @@ def _section(body: str, name: str) -> str | None:
     rest = body[start.end() :]
     nxt = re.search(r"^## ", rest, re.MULTILINE)
     text = rest[: nxt.start()] if nxt else rest
-    text = text.replace("***", "").strip()
+    text = re.sub(r"^\*\*\*+\s*$", "", text, flags=re.MULTILINE).strip()
     return text or None
 
 

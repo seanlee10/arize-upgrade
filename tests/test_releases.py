@@ -141,3 +141,27 @@ def test_fetch_releases_uses_injected_fetcher():
     releases = fetch_releases(fetch=fake_fetch)
     assert len(releases) == 3
     assert calls == ["https://arize.com/docs/ax/selfhosting/on-premise-releases.md"]
+
+
+def test_emphasis_markers_survive_parsing():
+    sample_with_breaking_change = """\
+# Release 11.40.0 (2026-07-21)
+
+## Upgrade Notes
+
+* ***Breaking Change***: pin your storage classes first.
+
+## Updates
+
+* Some update
+"""
+    releases = parse_releases(sample_with_breaking_change)
+    assert len(releases) == 1
+    assert "***Breaking Change***" in releases[0].upgrade_notes
+
+
+def test_real_fixture_11_40_0_has_breaking_change_marker():
+    releases = parse_releases(FIXTURE)
+    by_version = {str(r.version): r for r in releases}
+    assert "11.40.0" in by_version
+    assert "***Breaking Change***" in by_version["11.40.0"].upgrade_notes
