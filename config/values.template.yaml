@@ -1,48 +1,48 @@
-cloud: "aws"
-clusterName: "arn:aws:eks:<region>:<aws-account-id>:cluster/<cluster-name>"
-region: "ap-northeast-2"
+cloud: "${ARIZE_CLOUD}"
+clusterName: "${ARIZE_CLUSTER_ARN}"
+region: "${ARIZE_REGION}"
 hubJwt: "${ARIZE_HUB_JWT}"
-gazetteBucket: "<cluster-name>-gazette-bucket"
-druidBucket: "<cluster-name>-druid-bucket"
+gazetteBucket: "${ARIZE_GAZETTE_BUCKET}"
+druidBucket: "${ARIZE_DRUID_BUCKET}"
 
-organizationName: "<org-name>"
-# legacyGlobalIdPrefix: "UPyramal Financearn:aws:eks:ap-south-1:<other-aws-account-id>:cluster/arize-cluster-uauglobalid"
+organizationName: "${ARIZE_ORGANIZATION_NAME}"
+# legacyGlobalIdPrefix: "<stale example from a different cluster, kept for reference>"
 cipherKey: "${ARIZE_CIPHER_KEY}"
-clusterSizing: "test"
-collectNodeMetrics: true
-zoneAware: false
+clusterSizing: "${ARIZE_CLUSTER_SIZING}"
+collectNodeMetrics: ${ARIZE_COLLECT_NODE_METRICS}
+zoneAware: ${ARIZE_ZONE_AWARE}
 
-alyxEnabled: false
+alyxEnabled: ${ARIZE_ALYX_ENABLED}
 
 # The URL used to reach the Arize UI once ingress endpoints are created
-appBaseUrl: "https://arize.example.com"
-expBaseUrl: "https://grpc.example.com"
+appBaseUrl: "${ARIZE_APP_BASE_URL}"
+expBaseUrl: "${ARIZE_EXP_BASE_URL}"
 
 # AWS IAM role for pod-level bucket access
-awsServiceAccountRoleRwBucket: "arn:aws:iam::<aws-account-id>:role/<cluster-name>-webidentity-role-rw"
+awsServiceAccountRoleRwBucket: "${ARIZE_RW_BUCKET_ROLE_ARN}"
 
-realTimeUseLatestOffset: false
-realTimeMutableCutoverDate: 3000-01-01T00:00:00Z
-realTimeGlobalCutoverTime: 3000-01-01T00:00:00Z
-realTimeSpaceCutoverTime: 3000-01-01T00:00:00Z
+realTimeUseLatestOffset: ${ARIZE_REALTIME_USE_LATEST_OFFSET}
+realTimeMutableCutoverDate: ${ARIZE_REALTIME_MUTABLE_CUTOVER_DATE}
+realTimeGlobalCutoverTime: ${ARIZE_REALTIME_GLOBAL_CUTOVER_TIME}
+realTimeSpaceCutoverTime: ${ARIZE_REALTIME_SPACE_CUTOVER_TIME}
 
 multiCloudGcpServiceAccountKey: "${ARIZE_GCP_SA_KEY}"
 
 # AWS Storage Classes
-storageClassAwsStandard: "gp3"
-storageClassAwsSsd: "gp3"
+storageClassAwsStandard: "${ARIZE_STORAGE_CLASS_AWS_STANDARD}"
+storageClassAwsSsd: "${ARIZE_STORAGE_CLASS_AWS_SSD}"
 
 postgresPassword: "${ARIZE_POSTGRES_PASSWORD}"
 
 smtpPassword: "${ARIZE_SMTP_PASSWORD}"
 smtpUser: "${ARIZE_SMTP_USER}"
-smtpHost: "email-smtp.<region>.amazonaws.com"
-smtpSenderEmail: "ops@example.com"
-smtpPort: 587
-smtpRequireTls: true
+smtpHost: "${ARIZE_SMTP_HOST}"
+smtpSenderEmail: "${ARIZE_SMTP_SENDER_EMAIL}"
+smtpPort: ${ARIZE_SMTP_PORT}
+smtpRequireTls: ${ARIZE_SMTP_REQUIRE_TLS}
 
-dataFabricEnabled: true
-dataFabricPermissionsCheckEnabled: true
+dataFabricEnabled: ${ARIZE_DATA_FABRIC_ENABLED}
+dataFabricPermissionsCheckEnabled: ${ARIZE_DATA_FABRIC_PERMISSIONS_CHECK_ENABLED}
 
 internalEndpointsAppTlsCert: "${ARIZE_INTERNAL_TLS_CERT}"
 internalEndpointsAppTlsKey: "${ARIZE_INTERNAL_TLS_KEY}"
@@ -51,14 +51,14 @@ flightTlsCert: "${ARIZE_FLIGHT_TLS_CERT}"
 flightTlsKey: "${ARIZE_FLIGHT_TLS_KEY}"
 
 # Only required if using a common node pool
-historicalNodePoolEnabled: true
+historicalNodePoolEnabled: ${ARIZE_HISTORICAL_NODE_POOL_ENABLED}
 
-enableCustomCodeEvals: true
+enableCustomCodeEvals: ${ARIZE_ENABLE_CUSTOM_CODE_EVALS}
 
-# GCP 프로젝트 설정
-gcpProject: "<gcp-project>"
+# GCP project settings
+gcpProject: "${ARIZE_GCP_PROJECT}"
 
-# 3.2단계에서 생성한 credential-config.json을 base64 인코딩한 값
+# Base64-encoded credential-config.json generated in step 3.2
 
 # baseOverlay: |
 #   apiVersion: apps/v1
@@ -80,10 +80,10 @@ gcpProject: "<gcp-project>"
 #             projected:
 #               sources:
 #                 - serviceAccountToken:
-#                     audience: "//iam.googleapis.com/projects/<gcp-project-number>/locations/global/workloadIdentityPools/aws-eks-pool/providers/aws-eks-provider"
+#                     audience: "//iam.googleapis.com/projects/<gcp-project-number>/locations/global/workloadIdentityPools/<pool-name>/providers/<provider-name>"
 #                     expirationSeconds: 3600
 #                     path: token
 
 # --- Private registry (added for the automated upgrade pipeline) ---
-pushRegistry: "<aws-account-id>.dkr.ecr.<region>.amazonaws.com"
-repoName: "arize"
+pushRegistry: "${ARIZE_PUSH_REGISTRY}"
+repoName: "${ARIZE_REPO_NAME}"

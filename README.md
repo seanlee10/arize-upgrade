@@ -25,17 +25,23 @@ This tool upgrades a production cluster. Three properties are worth knowing up f
 
 ## Setup
 
+Nothing environment-specific is hardcoded anywhere in this repo — every cluster/account/region/URL value below comes from a GitHub Actions **Variable** or **Secret**. `config/values.template.yaml` is 100% `${VAR}` placeholders; `scripts/render-values.sh` fails closed if a required one is missing.
+
 ### 1. Repository variables
+
+Non-secret. Two groups: the pipeline's own workflow variables, and the `ARIZE_*` variables that `scripts/render-values.sh` substitutes into `config/values.template.yaml` (see step 5).
+
+**Workflow variables** (read directly by the Python CLI / workflows):
 
 | Variable | Example | Purpose |
 |---|---|---|
 | `NOTIFY_PROVIDER` | `slack` | `slack` or `teams`. Exactly one; an unknown value is a hard error. |
 | `SLACK_CHANNEL_ID` | `C0123456789` | Slack only. |
-| `PUSH_REGISTRY` | `123456789012.dkr.ecr.ap-northeast-2.amazonaws.com` | ECR registry host. |
+| `PUSH_REGISTRY` | `123456789012.dkr.ecr.us-east-1.amazonaws.com` | ECR registry host, used when composing chat messages. |
 | `APP_BASE_URL` | `https://arize-app.example.com` | Linked from the result message. |
-| `AWS_REGION` | `ap-northeast-2` | |
+| `AWS_REGION` | `us-east-1` | |
 | `EKS_CLUSTER_NAME` | `my-cluster` | Short name, for `aws eks update-kubeconfig`. |
-| `EKS_CLUSTER_ARN` | `arn:aws:eks:…:cluster/my-cluster` | Must equal `clusterName` in your values. |
+| `EKS_CLUSTER_ARN` | `arn:aws:eks:us-east-1:123456789012:cluster/my-cluster` | Must equal `clusterName` in your values. |
 | `DEPLOYED_VERSION` | `11.41.0` | Bootstrap only; ignored once a `deployed/*` Release exists. |
 
 ```bash
@@ -44,6 +50,46 @@ gh variable set DEPLOYED_VERSION --body 11.41.0
 ```
 
 The pipeline **never guesses** the deployed version. On the very first run there is no `deployed/*` Release, so `DEPLOYED_VERSION` must be seeded or the check fails with instructions.
+
+**Values-template variables — required** (no default; `render-values.sh` refuses to run without every one of these):
+
+| Variable | Example | `values.yaml` key |
+|---|---|---|
+| `ARIZE_CLUSTER_ARN` | `arn:aws:eks:us-east-1:123456789012:cluster/my-cluster` | `clusterName` — `kubectl` is pinned to this exact ARN |
+| `ARIZE_REGION` | `us-east-1` | `region` |
+| `ARIZE_GAZETTE_BUCKET` | `my-cluster-gazette-bucket` | `gazetteBucket` |
+| `ARIZE_DRUID_BUCKET` | `my-cluster-druid-bucket` | `druidBucket` |
+| `ARIZE_ORGANIZATION_NAME` | `my-org` | `organizationName` |
+| `ARIZE_APP_BASE_URL` | `https://arize-app.example.com` | `appBaseUrl` |
+| `ARIZE_EXP_BASE_URL` | `https://grpc.example.com` | `expBaseUrl` |
+| `ARIZE_RW_BUCKET_ROLE_ARN` | `arn:aws:iam::123456789012:role/my-cluster-webidentity-role-rw` | `awsServiceAccountRoleRwBucket` |
+| `ARIZE_PUSH_REGISTRY` | `123456789012.dkr.ecr.us-east-1.amazonaws.com` | `pushRegistry` |
+| `ARIZE_GCP_PROJECT` | `my-gcp-project` | `gcpProject` |
+| `ARIZE_SMTP_HOST` | `email-smtp.us-east-1.amazonaws.com` | `smtpHost` |
+| `ARIZE_SMTP_SENDER_EMAIL` | `ops@example.com` | `smtpSenderEmail` |
+
+**Values-template variables — optional** (applied automatically when unset; `render-values.sh` logs which defaults it applied):
+
+| Variable | Default | `values.yaml` key |
+|---|---|---|
+| `ARIZE_CLOUD` | `aws` | `cloud` |
+| `ARIZE_REPO_NAME` | `arize` | `repoName` |
+| `ARIZE_CLUSTER_SIZING` | `test` | `clusterSizing` |
+| `ARIZE_STORAGE_CLASS_AWS_STANDARD` | `gp3` | `storageClassAwsStandard` |
+| `ARIZE_STORAGE_CLASS_AWS_SSD` | `gp3` | `storageClassAwsSsd` |
+| `ARIZE_SMTP_PORT` | `587` | `smtpPort` |
+| `ARIZE_SMTP_REQUIRE_TLS` | `true` | `smtpRequireTls` |
+| `ARIZE_COLLECT_NODE_METRICS` | `true` | `collectNodeMetrics` |
+| `ARIZE_ZONE_AWARE` | `false` | `zoneAware` |
+| `ARIZE_ALYX_ENABLED` | `false` | `alyxEnabled` |
+| `ARIZE_REALTIME_USE_LATEST_OFFSET` | `false` | `realTimeUseLatestOffset` |
+| `ARIZE_REALTIME_MUTABLE_CUTOVER_DATE` | `3000-01-01T00:00:00Z` | `realTimeMutableCutoverDate` |
+| `ARIZE_REALTIME_GLOBAL_CUTOVER_TIME` | `3000-01-01T00:00:00Z` | `realTimeGlobalCutoverTime` |
+| `ARIZE_REALTIME_SPACE_CUTOVER_TIME` | `3000-01-01T00:00:00Z` | `realTimeSpaceCutoverTime` |
+| `ARIZE_DATA_FABRIC_ENABLED` | `true` | `dataFabricEnabled` |
+| `ARIZE_DATA_FABRIC_PERMISSIONS_CHECK_ENABLED` | `true` | `dataFabricPermissionsCheckEnabled` |
+| `ARIZE_HISTORICAL_NODE_POOL_ENABLED` | `true` | `historicalNodePoolEnabled` |
+| `ARIZE_ENABLE_CUSTOM_CODE_EVALS` | `true` | `enableCustomCodeEvals` |
 
 ### 2. Secrets
 

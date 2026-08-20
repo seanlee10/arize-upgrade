@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
 """Generate config/values.template.yaml from a real values.yaml.
 
-Replaces every secret field with a ${VAR} placeholder and adds the ECR
-settings. Run this once against the live file; never commit the input.
+Replaces every secret field (SECRET_FIELDS) and every other
+environment-specific config field (CONFIG_FIELDS) with a ${VAR} placeholder,
+and adds the ECR settings, also templated. Run this once against the live
+file; never commit the input.
+
+SECRET_FIELDS and CONFIG_FIELDS are rewritten identically -- the only
+difference between them is where the value ends up in GitHub: a
+SECRET_FIELDS entry becomes a GitHub Secret, a CONFIG_FIELDS entry becomes a
+GitHub (repository) Variable. The five leak gates below apply to both, with
+one deliberate exception: the value-based residual-secret gate (Gate 2)
+checks only SECRET_FIELDS values, not CONFIG_FIELDS values -- see the note
+on that gate.
 
 Usage: python3 scripts/make-values-template.py /path/to/values.yaml [output-path]
 
@@ -15,7 +25,8 @@ import re
 import sys
 from pathlib import Path
 
-# yaml key -> environment variable used in the template
+# yaml key -> environment variable used in the template. These become
+# GitHub Secrets.
 SECRET_FIELDS = {
     "hubJwt": "ARIZE_HUB_JWT",
     "cipherKey": "ARIZE_CIPHER_KEY",
@@ -29,11 +40,69 @@ SECRET_FIELDS = {
     "flightTlsKey": "ARIZE_FLIGHT_TLS_KEY",
 }
 
+# yaml key -> environment variable, for every other environment-specific
+# (but non-secret) field: cluster/network identity, buckets, URLs, and the
+# deployment toggles/tunables. These become GitHub (repository) Variables.
+# Rewritten by exactly the same per-line logic as SECRET_FIELDS below --
+# the two mappings are combined into REWRITE_FIELDS and treated
+# identically there. The only place they're treated differently is Gate 2
+# (residual-value check), which intentionally stays scoped to
+# SECRET_FIELDS -- see the note on that gate.
+CONFIG_FIELDS = {
+    "clusterName": "ARIZE_CLUSTER_ARN",
+    "region": "ARIZE_REGION",
+    "gazetteBucket": "ARIZE_GAZETTE_BUCKET",
+    "druidBucket": "ARIZE_DRUID_BUCKET",
+    "organizationName": "ARIZE_ORGANIZATION_NAME",
+    "clusterSizing": "ARIZE_CLUSTER_SIZING",
+    "appBaseUrl": "ARIZE_APP_BASE_URL",
+    "expBaseUrl": "ARIZE_EXP_BASE_URL",
+    "awsServiceAccountRoleRwBucket": "ARIZE_RW_BUCKET_ROLE_ARN",
+    "storageClassAwsStandard": "ARIZE_STORAGE_CLASS_AWS_STANDARD",
+    "storageClassAwsSsd": "ARIZE_STORAGE_CLASS_AWS_SSD",
+    "smtpHost": "ARIZE_SMTP_HOST",
+    "smtpSenderEmail": "ARIZE_SMTP_SENDER_EMAIL",
+    "gcpProject": "ARIZE_GCP_PROJECT",
+    "cloud": "ARIZE_CLOUD",
+    "collectNodeMetrics": "ARIZE_COLLECT_NODE_METRICS",
+    "zoneAware": "ARIZE_ZONE_AWARE",
+    "alyxEnabled": "ARIZE_ALYX_ENABLED",
+    "realTimeUseLatestOffset": "ARIZE_REALTIME_USE_LATEST_OFFSET",
+    "realTimeMutableCutoverDate": "ARIZE_REALTIME_MUTABLE_CUTOVER_DATE",
+    "realTimeGlobalCutoverTime": "ARIZE_REALTIME_GLOBAL_CUTOVER_TIME",
+    "realTimeSpaceCutoverTime": "ARIZE_REALTIME_SPACE_CUTOVER_TIME",
+    "smtpPort": "ARIZE_SMTP_PORT",
+    "smtpRequireTls": "ARIZE_SMTP_REQUIRE_TLS",
+    "dataFabricEnabled": "ARIZE_DATA_FABRIC_ENABLED",
+    "dataFabricPermissionsCheckEnabled": "ARIZE_DATA_FABRIC_PERMISSIONS_CHECK_ENABLED",
+    "historicalNodePoolEnabled": "ARIZE_HISTORICAL_NODE_POOL_ENABLED",
+    "enableCustomCodeEvals": "ARIZE_ENABLE_CUSTOM_CODE_EVALS",
+    # pushRegistry / repoName are additions this pipeline makes -- the
+    # vendor's values.yaml never defines them, so there is nothing to
+    # rewrite in place. They are handled by the ECR_SETTINGS append below
+    # instead of the generic per-line rewrite (see _ECR_ONLY_FIELDS), but
+    # are listed here so they still appear in the completeness gate and in
+    # documentation as GitHub Variables.
+    "pushRegistry": "ARIZE_PUSH_REGISTRY",
+    "repoName": "ARIZE_REPO_NAME",
+}
+
+ALL_FIELDS = {**SECRET_FIELDS, **CONFIG_FIELDS}
+
+# pushRegistry/repoName are always appended fresh via ECR_SETTINGS rather
+# than rewritten in place, so any pre-existing line for them in the source
+# is dropped instead of templated -- see the per-line loop below.
+_ECR_ONLY_FIELDS = {"pushRegistry", "repoName"}
+
+# Fields rewritten by the generic per-line loop: everything except the
+# ECR-only fields, which are handled by the drop-then-append path instead.
+REWRITE_FIELDS = {k: v for k, v in ALL_FIELDS.items() if k not in _ECR_ONLY_FIELDS}
+
 # Added so arize.sh pushes to and pulls from ECR instead of Arize's registry.
-ECR_SETTINGS = """
+ECR_SETTINGS = f"""
 # --- Private registry (added for the automated upgrade pipeline) ---
-pushRegistry: "<aws-account-id>.dkr.ecr.<region>.amazonaws.com"
-repoName: "arize"
+pushRegistry: "${{{CONFIG_FIELDS['pushRegistry']}}}"
+repoName: "${{{CONFIG_FIELDS['repoName']}}}"
 """
 
 # Loose presence detection: does the SOURCE mention this key at all, in any
@@ -42,7 +111,7 @@ repoName: "arize"
 # so we don't accidentally template something inside a comment or a nested
 # structure. Comparing "present" (loose) against what actually got
 # templated (strict) is what catches formatting the strict rewrite misses.
-_LOOSE = {k: re.compile(rf"^\s*{re.escape(k)}\s*:", re.MULTILINE) for k in SECRET_FIELDS}
+_LOOSE = {k: re.compile(rf"^\s*{re.escape(k)}\s*:", re.MULTILINE) for k in ALL_FIELDS}
 
 # Check 1: a single long base64-looking run on one line. 100 chars is high
 # enough that an ordinary URL or identifier (which mixes in '.', ':', '-',
@@ -77,6 +146,21 @@ def _safe_label(line: str) -> str:
     return match.group(1) if match else "<continuation line, no key>"
 
 
+def _placeholder_value(var: str, value_segment: str) -> str:
+    """Render "${var}", preserving the source's own quoting style.
+
+    Secrets and most config fields are quoted strings; the boolean, int,
+    and timestamp toggles/tunables (e.g. collectNodeMetrics, smtpPort,
+    realTimeMutableCutoverDate) are unquoted in the source, and must stay
+    unquoted so YAML still parses them as their native type once envsubst
+    fills in the placeholder.
+    """
+    stripped = value_segment.strip()
+    if len(stripped) >= 2 and stripped[0] == stripped[-1] and stripped[0] in "\"'":
+        return f"{stripped[0]}${{{var}}}{stripped[0]}"
+    return f"${{{var}}}"
+
+
 def main() -> int:
     if len(sys.argv) not in (2, 3):
         print(__doc__, file=sys.stderr)
@@ -106,16 +190,23 @@ def main() -> int:
             dropped_comments += 1
             continue
 
-        for key, var in SECRET_FIELDS.items():
+        for key, var in REWRITE_FIELDS.items():
             if re.match(rf"^{re.escape(key)}\s*:", line):
-                lines.append(f'{key}: "${{{var}}}"')
+                value_segment = line.split(":", 1)[1]
+                lines.append(f"{key}: {_placeholder_value(var, value_segment)}")
                 replaced.add(key)
-                raw = line.split(":", 1)[1].strip().strip('"').strip("'")
-                if raw:
+                raw = value_segment.strip().strip('"').strip("'")
+                # Gate 2 (below) only makes sense for secrets: a config
+                # value like a region or a boolean is expected to recur
+                # elsewhere in ordinary text, so checking it would produce
+                # false refusals rather than catching a real leak.
+                if raw and key in SECRET_FIELDS:
                     original_values[key] = raw
                 break
         else:
-            # Drop any pre-existing registry keys; ECR_SETTINGS supplies them.
+            # pushRegistry/repoName are always appended fresh via
+            # ECR_SETTINGS (see _ECR_ONLY_FIELDS); drop any pre-existing
+            # line for them so the output never has a duplicate key.
             if re.match(r"^(pushRegistry|repoName)\s*:", line):
                 continue
             lines.append(line)
@@ -130,8 +221,19 @@ def main() -> int:
     # have ended up as a placeholder. Catches indentation/formatting the
     # strict line-start rewrite above doesn't match -- e.g. an indented
     # "  hubJwt:" line passes through untouched with its real value intact,
-    # and this is the only check positioned to notice that.
-    untemplated = sorted(k for k in present if f'{k}: "${{' not in rendered)
+    # and this is the only check positioned to notice that. Matched with a
+    # regex (not a fixed substring) because CONFIG_FIELDS placeholders can
+    # be quoted or unquoted depending on the source's own style (see
+    # _placeholder_value).
+    untemplated = sorted(
+        k
+        for k in present
+        if not re.search(
+            rf'^{re.escape(k)}:\s*.*\$\{{{re.escape(ALL_FIELDS[k])}\}}',
+            rendered,
+            re.MULTILINE,
+        )
+    )
     if untemplated:
         print(
             "ERROR: refusing to write; these keys exist in the source but were not templated:",
@@ -153,6 +255,16 @@ def main() -> int:
     # stronger than any shape heuristic. Only the key name is ever
     # printed, never the value. A floor avoids pathological matches on
     # trivial values like "true".
+    #
+    # Deliberately scoped to SECRET_FIELDS only (original_values is only
+    # ever populated for SECRET_FIELDS keys, above). CONFIG_FIELDS values
+    # are ordinary config text -- a region code, a boolean, a bucket name
+    # fragment -- and are expected to recur elsewhere in a normal
+    # values.yaml (e.g. a region embedded in an ARN on another line, or a
+    # bucket-name prefix reused across gazette/druid buckets); extending
+    # this exact-value scan to them produces false refusals on ordinary
+    # config rather than catching a real leak. The shape-based gates below
+    # (base64 run, wrapped body, PEM armour) still apply to everything.
     _MIN_VALUE_LEN = 8
     residual = []
     for key, value in original_values.items():
@@ -217,9 +329,15 @@ def main() -> int:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(rendered, encoding="utf-8")
 
-    missing = sorted(set(SECRET_FIELDS) - present)
+    # pushRegistry/repoName are always appended via ECR_SETTINGS regardless
+    # of source content, so they're never "missing" in the sense of "no
+    # placeholder added" -- exclude them from that note.
+    missing = sorted(set(ALL_FIELDS) - present - _ECR_ONLY_FIELDS)
+    secrets_replaced = replaced & SECRET_FIELDS.keys()
+    config_replaced = (replaced & CONFIG_FIELDS.keys()) | _ECR_ONLY_FIELDS
     print(
-        f"wrote {output} ({len(replaced)} secrets templated, "
+        f"wrote {output} ({len(secrets_replaced)} secrets templated, "
+        f"{len(config_replaced)} config values templated, "
         f"{dropped_comments} commented-out secret-like lines dropped)"
     )
     if missing:

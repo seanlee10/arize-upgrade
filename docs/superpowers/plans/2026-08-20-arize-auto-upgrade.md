@@ -3221,11 +3221,11 @@ approval page. That is why Slack and Teams are interchangeable.
 |---|---|---|
 | `NOTIFY_PROVIDER` | `slack` | `slack` or `teams`. Exactly one. |
 | `SLACK_CHANNEL_ID` | `C0123456789` | Slack only. |
-| `PUSH_REGISTRY` | `123456789012.dkr.ecr.ap-northeast-2.amazonaws.com` | ECR registry host. |
+| `PUSH_REGISTRY` | `123456789012.dkr.ecr.us-east-1.amazonaws.com` | ECR registry host. |
 | `APP_BASE_URL` | `https://arize-app.example.com` | Linked from the result message. |
-| `AWS_REGION` | `ap-northeast-2` | |
+| `AWS_REGION` | `us-east-1` | |
 | `EKS_CLUSTER_NAME` | `my-cluster` | Short name for `update-kubeconfig`. |
-| `EKS_CLUSTER_ARN` | `arn:aws:eks:ap-northeast-2:123456789012:cluster/my-cluster` | Must equal `clusterName` in values. |
+| `EKS_CLUSTER_ARN` | `arn:aws:eks:us-east-1:123456789012:cluster/my-cluster` | Must equal `clusterName` in values. |
 | `DEPLOYED_VERSION` | `11.41.0` | Bootstrap only; ignored once a `deployed/*` Release exists. |
 
 ```bash

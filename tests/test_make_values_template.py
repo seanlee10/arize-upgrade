@@ -60,16 +60,16 @@ def _run(monkeypatch, capsys, tmp_path, source_text: str, source_name: str = "va
 
 
 ALL_KEYS_SOURCE = """\
-hubJwt: dummy-jwt-value
-cipherKey: dummy-cipher-value
-postgresPassword: dummy-pg-password
-smtpUser: dummy-smtp-user
-smtpPassword: dummy-smtp-password
-multiCloudGcpServiceAccountKey: dummy-gcp-key
-internalEndpointsAppTlsCert: dummy-internal-cert
-internalEndpointsAppTlsKey: dummy-internal-key
-flightTlsCert: dummy-flight-cert
-flightTlsKey: dummy-flight-key
+hubJwt: "dummy-jwt-value"
+cipherKey: "dummy-cipher-value"
+postgresPassword: "dummy-pg-password"
+smtpUser: "dummy-smtp-user"
+smtpPassword: "dummy-smtp-password"
+multiCloudGcpServiceAccountKey: "dummy-gcp-key"
+internalEndpointsAppTlsCert: "dummy-internal-cert"
+internalEndpointsAppTlsKey: "dummy-internal-key"
+flightTlsCert: "dummy-flight-cert"
+flightTlsKey: "dummy-flight-key"
 otherSetting: unrelated-value
 """
 
@@ -83,6 +83,30 @@ def test_clean_source_all_ten_keys_writes_placeholders(monkeypatch, capsys, tmp_
     for key, var in mvt.SECRET_FIELDS.items():
         assert f'{key}: "${{{var}}}"' in content
     assert "10 secrets templated" in captured.out
+
+
+def test_config_field_key_is_templated_as_a_github_variable(monkeypatch, capsys, tmp_path):
+    # CONFIG_FIELDS covers the non-secret, environment-specific keys (cluster
+    # identity, buckets, URLs, toggles). They go through the same rewrite
+    # logic as SECRET_FIELDS -- the only difference is that they end up as
+    # GitHub repository Variables rather than Secrets. Also exercises an
+    # unquoted boolean field, which must stay unquoted in the output so
+    # envsubst still yields a real YAML boolean, not a quoted string.
+    source = (
+        'organizationName: "dummy-org"\n'
+        "collectNodeMetrics: true\n"
+        'cloud: "aws"\n'
+    )
+
+    rc, captured, output_path = _run(monkeypatch, capsys, tmp_path, source)
+
+    assert rc == 0
+    assert output_path.exists()
+    content = output_path.read_text(encoding="utf-8")
+    assert 'organizationName: "${ARIZE_ORGANIZATION_NAME}"' in content
+    assert "collectNodeMetrics: ${ARIZE_COLLECT_NODE_METRICS}" in content
+    assert 'cloud: "${ARIZE_CLOUD}"' in content
+    assert "config values templated" in captured.out
 
 
 def test_indented_key_is_refused_not_silently_dropped(monkeypatch, capsys, tmp_path):
