@@ -38,10 +38,9 @@ Findings from `arize-distribution-11.37.1/arize.sh` (1876 lines) and
 `arize-distribution-11.41.0/`. These constrain the design and are easy to get
 wrong from the public docs alone.
 
-**The distribution bundle *is* the version.** `arize.sh` hardcodes
-`a pinned build id` and a table of 26 per-image `sha256` digests
-(`image digest table`). There is no version string to bump. Upgrading means
-fetching a new bundle:
+**The distribution bundle *is* the version.** The bundle pins an exact build
+and a fixed digest per image, so there is no version string to bump. Upgrading
+means fetching a new bundle:
 
 ```
 curl -H "Authorization: Bearer $JWT" "https://ch.hub.arize.com/dist/get_latest.sh" | sh -
@@ -59,9 +58,8 @@ reads the version from the directory name `arize-distribution-X.Y.Z`, and
 page. This closes the race where a newer release lands between detection and
 install.
 
-**Parameter resolution order** (`default loading` → `values loading` → `argument parsing`,
-lines 337–398): built-in defaults, then `values.yaml`, then `key=value` CLI
-arguments. Relevant defaults:
+**Parameter resolution order**: built-in defaults, then `values.yaml`, then
+`key=value` CLI arguments. Relevant defaults:
 
 | Parameter | Default | Notes |
 |---|---|---|
@@ -73,34 +71,28 @@ arguments. Relevant defaults:
 | `namespaceArize` | `arize` | |
 | `namespaceOperator` | `arize-operator` | |
 | `helmNamespace` | `default` | |
-| `tag` | `$VERSION` | The bundle's baked-in git hash |
+| `tag` | *(bundle's own build id)* | Defaults to the build the bundle pins |
 
-**`-y` is required for CI.** `the push step()` (line 714) prints
-`"You are about to push images to registry ... Continue (y/n)?"` and blocks on
-`read` when `INTERACTIVE=true`. `-y` sets `INTERACTIVE=false` and is the only
-thing that makes the step unattended. `-q` suppresses the banner; `-t <secs>`
+**`-y` is required for CI.** The push step asks for interactive confirmation
+before writing to the registry and blocks waiting for input. `-y` is the only
+flag that makes it unattended. `-q` suppresses the banner; `-t <secs>`
 sets the global timeout (default 1800).
 
-**ECR is a first-class target.** `the push step()` (lines 753–761) already runs
-`aws ecr describe-repositories || aws ecr create-repository
---image-scanning-configuration scanOnPush=true` per image. The workflow does not
-need to pre-create repositories.
+**ECR is a first-class target.** The push step creates any missing ECR
+repository itself, with scan-on-push enabled, so the workflow does not need to
+pre-create repositories.
 
-**Disk is the real constraint.** `the pull step()` (line 645) pulls each of 26
-images into the local Docker daemon; `the push step()` re-tags and pushes from
-there. A GitHub-hosted `ubuntu-latest` runner has ~14 GB free on `/` but a much
+**Disk is the real constraint.** The pull step stages all 26 images through the
+local Docker daemon, and the push step re-tags and uploads from there. A GitHub-hosted `ubuntu-latest` runner has ~14 GB free on `/` but a much
 larger ephemeral volume at `/mnt` (~65 GB). Mitigation is mandatory: remap
 Docker's `data-root` to `/mnt` before pulling. See "Runner disk" below.
 
-**`install` is `helm upgrade --install`.** `the install step()` (line 508) runs
-`helm upgrade --install --namespace $helmNamespace -f $VALUE_FILE arize-op
-arize-operator-chart.tgz`, then the CR chart. It is idempotent and is the same
-command for a fresh install and an upgrade.
+**`install` is a helm upgrade-or-install.** It is idempotent, and is the same
+operation for a fresh install and for an upgrade.
 
-**`kubectl` is pinned to the cluster name.** `argument parsing()` sets
-`the cluster arguments`, and `clusterName`
-is the full EKS ARN. The kubeconfig entry must therefore be aliased to that exact
-ARN.
+**`kubectl` is pinned to the cluster name.** Every cluster call is made against
+the `clusterName` from `values.yaml`, which is the full EKS ARN. The kubeconfig
+entry must therefore be aliased to that exact ARN.
 
 **`install-status` is a real operation.** It waits for the postgres, gazette, and
 druid init jobs to reach `Completed` and for all statefulsets and deployments to

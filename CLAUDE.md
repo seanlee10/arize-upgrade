@@ -34,7 +34,7 @@ check-release.yml (cron)  →  upgrade.yml
 
 ### Five facts that explain most of the design
 
-**1. The distribution bundle *is* the version.** The vendor's `arize.sh` hardcodes `VERSION` plus a table of 26 per-image `sha256` digests. There is no version string to bump — upgrading means fetching a new bundle.
+**1. The distribution bundle *is* the version.** The vendor bundle pins an exact build and a fixed digest for each of its 26 images. There is no version string to bump — upgrading means fetching a new bundle.
 
 **2. The download endpoint serves *latest only*.** `get_latest.sh` cannot be asked for a specific version. So the pipeline detects N, a human approves N, and a later job downloads "latest" — which is a different release if the vendor ships N+1 in between. `bundle.py` exists solely to turn that silent substitution into a loud abort, which is why it errors on zero bundles, on *more than one* bundle, on a directory missing `arize.sh`, and on any version mismatch.
 

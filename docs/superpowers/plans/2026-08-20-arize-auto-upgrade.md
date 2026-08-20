@@ -16,7 +16,7 @@
 - **Package root is `src/arize_upgrade/`**, installed as an editable package exposing the console script `arize-upgrade`.
 - **Never commit `values.yaml`.** It is in `.gitignore`. Only `config/values.template.yaml` (placeholders) is tracked.
 - **Never log rendered values.** Steps that render or consume `values.yaml` must not `cat` it or pass `-v` to `arize.sh`.
-- **`arize.sh` is always invoked with `-y -q`.** `-y` sets `INTERACTIVE=false`, which is the only thing that skips `the push step()`'s blocking `read` prompt. `-q` suppresses the banner.
+- **`arize.sh` is always invoked with `-y -q`.** `-y` is the only thing that skips the push step's blocking confirmation prompt. `-q` suppresses the banner.
 - **All shell steps use `set -euo pipefail`.**
 - **Release source of truth:** `https://arize.com/docs/ax/selfhosting/on-premise-releases.md`
 - **Distribution source:** `https://ch.hub.arize.com/dist/get_latest.sh` (Bearer JWT; serves *latest only*).
@@ -2659,7 +2659,7 @@ git commit -m "feat: template values.yaml with secrets injected at run time"
 - Consumes: nothing.
 - Produces: `scripts/prepare-runner-disk.sh`, run once before `pull-images`.
 
-**Context:** `the pull step()` (arize.sh line 645) pulls 26 images into the local Docker daemon and `the push step()` re-tags and pushes from there. `ubuntu-latest` has roughly 14 GB free on `/` but a much larger ephemeral volume at `/mnt`. Without this step the pull will exhaust the disk.
+**Context:** the pull step stages 26 images through the local Docker daemon and the push step re-tags and uploads from there. `ubuntu-latest` has roughly 14 GB free on `/` but a much larger ephemeral volume at `/mnt`. Without this step the pull will exhaust the disk.
 
 - [ ] **Step 1: Write the script**
 
@@ -2806,7 +2806,7 @@ git commit -m "feat: add daily release check workflow"
 - Consumes: the CLI (Task 9), `scripts/render-values.sh` (Task 10), `scripts/prepare-runner-disk.sh` (Task 11).
 - Produces: the gated five-job pipeline.
 
-**Context:** The two `environment:` declarations are the approval gates — a job declaring an environment with required reviewers pauses before its first step. `install` must alias the kubeconfig entry to the full EKS cluster ARN, because `arize.sh` sets `the cluster arguments` and `clusterName` is that ARN.
+**Context:** The two `environment:` declarations are the approval gates — a job declaring an environment with required reviewers pauses before its first step. `install` must alias the kubeconfig entry to the full EKS cluster ARN, because every cluster call is made against the `clusterName` from `values.yaml`, which is that ARN.
 
 - [ ] **Step 1: Write the workflow**
 
