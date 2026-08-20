@@ -55,10 +55,10 @@ historicalNodePoolEnabled: ${ARIZE_HISTORICAL_NODE_POOL_ENABLED}
 
 enableCustomCodeEvals: ${ARIZE_ENABLE_CUSTOM_CODE_EVALS}
 
-# GCP project settings
+# GCP 프로젝트 설정
 gcpProject: "${ARIZE_GCP_PROJECT}"
 
-# Base64-encoded credential-config.json generated in step 3.2
+# 3.2단계에서 생성한 credential-config.json을 base64 인코딩한 값
 
 # baseOverlay: |
 #   apiVersion: apps/v1
