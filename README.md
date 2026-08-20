@@ -41,8 +41,13 @@ Non-secret. Two groups: the pipeline's own workflow variables, and the `ARIZE_*`
 | `APP_BASE_URL` | `https://arize-app.example.com` | Linked from the result message. |
 | `AWS_REGION` | `us-east-1` | |
 | `EKS_CLUSTER_NAME` | `my-cluster` | Short name, for `aws eks update-kubeconfig`. |
-| `EKS_CLUSTER_ARN` | `arn:aws:eks:us-east-1:123456789012:cluster/my-cluster` | Must equal `clusterName` in your values. |
 | `DEPLOYED_VERSION` | `11.41.0` | Bootstrap only; ignored once a `deployed/*` Release exists. |
+
+There is no `EKS_CLUSTER_ARN` variable. The `install` job derives the cluster's ARN
+directly from AWS (`aws eks describe-cluster --name "$EKS_CLUSTER_NAME"`) and asserts
+it matches `ARIZE_CLUSTER_ARN` before touching `kubectl`, failing the job if they
+disagree. This keeps AWS as the single source of truth instead of trusting two
+independently-set variables to agree.
 
 ```bash
 gh variable set NOTIFY_PROVIDER --body slack
