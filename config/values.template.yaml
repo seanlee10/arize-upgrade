@@ -1,0 +1,89 @@
+cloud: "aws"
+clusterName: "arn:aws:eks:<region>:<aws-account-id>:cluster/<cluster-name>"
+region: "ap-northeast-2"
+hubJwt: "${ARIZE_HUB_JWT}"
+gazetteBucket: "<cluster-name>-gazette-bucket"
+druidBucket: "<cluster-name>-druid-bucket"
+
+organizationName: "<org-name>"
+# legacyGlobalIdPrefix: "UPyramal Financearn:aws:eks:ap-south-1:<other-aws-account-id>:cluster/arize-cluster-uauglobalid"
+cipherKey: "${ARIZE_CIPHER_KEY}"
+clusterSizing: "test"
+collectNodeMetrics: true
+zoneAware: false
+
+alyxEnabled: false
+
+# The URL used to reach the Arize UI once ingress endpoints are created
+appBaseUrl: "https://arize.example.com"
+expBaseUrl: "https://grpc.example.com"
+
+# AWS IAM role for pod-level bucket access
+awsServiceAccountRoleRwBucket: "arn:aws:iam::<aws-account-id>:role/<cluster-name>-webidentity-role-rw"
+
+realTimeUseLatestOffset: false
+realTimeMutableCutoverDate: 3000-01-01T00:00:00Z
+realTimeGlobalCutoverTime: 3000-01-01T00:00:00Z
+realTimeSpaceCutoverTime: 3000-01-01T00:00:00Z
+
+multiCloudGcpServiceAccountKey: "${ARIZE_GCP_SA_KEY}"
+
+# AWS Storage Classes
+storageClassAwsStandard: "gp3"
+storageClassAwsSsd: "gp3"
+
+postgresPassword: "${ARIZE_POSTGRES_PASSWORD}"
+
+smtpPassword: "${ARIZE_SMTP_PASSWORD}"
+smtpUser: "${ARIZE_SMTP_USER}"
+smtpHost: "email-smtp.<region>.amazonaws.com"
+smtpSenderEmail: "ops@example.com"
+smtpPort: 587
+smtpRequireTls: true
+
+dataFabricEnabled: true
+dataFabricPermissionsCheckEnabled: true
+
+internalEndpointsAppTlsCert: "${ARIZE_INTERNAL_TLS_CERT}"
+internalEndpointsAppTlsKey: "${ARIZE_INTERNAL_TLS_KEY}"
+
+flightTlsCert: "${ARIZE_FLIGHT_TLS_CERT}"
+flightTlsKey: "${ARIZE_FLIGHT_TLS_KEY}"
+
+# Only required if using a common node pool
+historicalNodePoolEnabled: true
+
+enableCustomCodeEvals: true
+
+# GCP 프로젝트 설정
+gcpProject: "<gcp-project>"
+
+# 3.2단계에서 생성한 credential-config.json을 base64 인코딩한 값
+
+# baseOverlay: |
+#   apiVersion: apps/v1
+#   kind: Deployment
+#   metadata:
+#     name: app-server
+#     namespace: arize
+#   spec:
+#     template:
+#       spec:
+#         containers:
+#           - name: app-server
+#             volumeMounts:
+#               - name: gcp-wif-token
+#                 mountPath: /var/run/service-account
+#                 readOnly: true
+#         volumes:
+#           - name: gcp-wif-token
+#             projected:
+#               sources:
+#                 - serviceAccountToken:
+#                     audience: "//iam.googleapis.com/projects/<gcp-project-number>/locations/global/workloadIdentityPools/aws-eks-pool/providers/aws-eks-provider"
+#                     expirationSeconds: 3600
+#                     path: token
+
+# --- Private registry (added for the automated upgrade pipeline) ---
+pushRegistry: "<aws-account-id>.dkr.ecr.<region>.amazonaws.com"
+repoName: "arize"
