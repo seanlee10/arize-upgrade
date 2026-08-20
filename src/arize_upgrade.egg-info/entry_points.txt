@@ -1,2 +1,0 @@
-[console_scripts]
-arize-upgrade = arize_upgrade.cli:main
