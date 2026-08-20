@@ -88,11 +88,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist && cd dist
+          # Piped to bash, not sh: the vendor's script uses `set -o pipefail`,
+          # which dash (Ubuntu's /bin/sh) rejects with "Illegal option -o pipefail".
           # Integrity check on this script is vendor-imposed: bundle.py verifies
           # the resulting bundle's version, but nothing here verifies the bytes
           # served by get_latest.sh. That is a known, accepted limitation.
           curl -sSf -H "Authorization: Bearer ${JWT}" \
-            "https://ch.hub.arize.com/dist/get_latest.sh" | sh -
+            "https://ch.hub.arize.com/dist/get_latest.sh" | bash -
 
       - name: Verify the bundle is the approved version
         id: bundle
@@ -230,11 +232,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist && cd dist
+          # Piped to bash, not sh: the vendor's script uses `set -o pipefail`,
+          # which dash (Ubuntu's /bin/sh) rejects with "Illegal option -o pipefail".
           # Integrity check on this script is vendor-imposed: bundle.py verifies
           # the resulting bundle's version, but nothing here verifies the bytes
           # served by get_latest.sh. That is a known, accepted limitation.
           curl -sSf -H "Authorization: Bearer ${JWT}" \
-            "https://ch.hub.arize.com/dist/get_latest.sh" | sh -
+            "https://ch.hub.arize.com/dist/get_latest.sh" | bash -
 
       - name: Verify the bundle is the approved version
         id: bundle
