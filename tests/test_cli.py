@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 import pytest
@@ -119,6 +118,34 @@ def test_check_alerts_when_the_deployed_version_is_unknown(outputs, monkeypatch)
 
     assert cli.main(["check"]) == 1
     assert "seed DEPLOYED_VERSION" in notifier.sent[0][0].body
+
+
+def test_notifier_is_built_before_anything_that_can_fail(outputs, monkeypatch):
+    # The notifier must exist before the deployed-version read and the release
+    # parse, so a failure in either still has a working notifier to alert
+    # through. Building it lazily inside the except blocks would break the
+    # alert path exactly when it is needed.
+    calls = []
+    notifier = RecordingNotifier()
+
+    def build(env):
+        calls.append("notifier")
+        return notifier
+
+    def deployed(env):
+        calls.append("deployed")
+        raise cli.DeployedVersionUnknown("seed DEPLOYED_VERSION")
+
+    monkeypatch.setattr(cli, "_notifier", build)
+    monkeypatch.setattr(cli, "_deployed_version", deployed)
+    monkeypatch.setattr(cli, "_fetch_markdown", lambda url: SAMPLE)
+    monkeypatch.setattr(cli, "_in_progress", lambda: False)
+
+    assert cli.main(["check"]) == 1
+    assert calls == ["notifier", "deployed"], (
+        f"notifier must be built first, got {calls}"
+    )
+    assert notifier.sent, "the failure must still reach the channel"
 
 
 def test_notify_detected_sends_and_emits_the_thread_ref(outputs, monkeypatch):
