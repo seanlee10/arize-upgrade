@@ -1,0 +1,54 @@
+name: Check for Arize release
+
+on:
+  schedule:
+    # 09:00 UTC, weekdays.
+    - cron: "0 9 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: arize-check-release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: pip install --quiet -e .
+
+      - name: Check for a newer release
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DEPLOYED_VERSION: ${{ vars.DEPLOYED_VERSION }}
+          NOTIFY_PROVIDER: ${{ vars.NOTIFY_PROVIDER }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: arize-upgrade check
+
+      - name: Dispatch the upgrade
+        if: steps.check.outputs.target_version != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET: ${{ steps.check.outputs.target_version }}
+        run: |
+          set -euo pipefail
+          echo "Dispatching upgrade to ${TARGET}"
+          # upgrade.yml lives only on this feature branch until Task 13 merges it,
+          # so a bare dispatch would resolve against the default branch and fail
+          # with "could not find any workflows named upgrade.yml". Pin --ref to
+          # this run's branch; this stays correct after merge too, since a run on
+          # any branch should dispatch that same branch's workflow, not main's.
+          gh workflow run upgrade.yml -f "target_version=${TARGET}" --ref "${GITHUB_REF_NAME}"
