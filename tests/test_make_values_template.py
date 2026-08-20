@@ -197,3 +197,29 @@ def test_long_url_in_a_comment_is_not_flagged_as_a_secret(monkeypatch, capsys, t
     assert output_path.exists()
     content = output_path.read_text(encoding="utf-8")
     assert audience_comment in content
+
+
+def test_short_secret_duplicated_in_a_comment_is_caught(monkeypatch, capsys, tmp_path):
+    # Shape gates (base64 run, wrapped body, PEM armour) cannot see this:
+    # the value is short, not base64-shaped, and not PEM. Only a check that
+    # compares against the actual replaced value can catch a plaintext
+    # secret duplicated in a stale comment.
+    secret = "hunter2-actual-password"
+    source = f'cloud: "aws"\nsmtpPassword: "{secret}"\n# old smtpPassword: {secret}\n'
+
+    rc, captured, output_path = _run(monkeypatch, capsys, tmp_path, source)
+
+    assert rc != 0
+    assert not output_path.exists()
+
+
+def test_the_residual_value_check_does_not_print_the_secret(monkeypatch, capsys, tmp_path):
+    secret = "hunter2-actual-password"
+    source = f'cloud: "aws"\nsmtpPassword: "{secret}"\n# old smtpPassword: {secret}\n'
+
+    rc, captured, output_path = _run(monkeypatch, capsys, tmp_path, source)
+
+    assert rc != 0
+    assert secret not in captured.err
+    assert secret not in captured.out
+    assert "smtpPassword" in captured.err

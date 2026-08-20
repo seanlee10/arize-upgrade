@@ -93,6 +93,7 @@ def main() -> int:
 
     replaced: set[str] = set()
     dropped_comments = 0
+    original_values: dict[str, str] = {}
 
     lines = []
     for line in source.splitlines():
@@ -109,6 +110,9 @@ def main() -> int:
             if re.match(rf"^{re.escape(key)}\s*:", line):
                 lines.append(f'{key}: "${{{var}}}"')
                 replaced.add(key)
+                raw = line.split(":", 1)[1].strip().strip('"').strip("'")
+                if raw:
+                    original_values[key] = raw
                 break
         else:
             # Drop any pre-existing registry keys; ECR_SETTINGS supplies them.
@@ -141,7 +145,33 @@ def main() -> int:
         )
         return 1
 
-    # Gate 2: check 1 -- a single long base64-looking run anywhere. Only a
+    # Gate 2: shape-based gates (below) cannot see a short, non-base64
+    # secret duplicated verbatim in a stale comment or leftover line --
+    # e.g. a live `smtpPassword: "hunter2"` correctly templated, alongside
+    # a forgotten `# old smtpPassword: hunter2` elsewhere. This compares
+    # against the actual values we just replaced, which is strictly
+    # stronger than any shape heuristic. Only the key name is ever
+    # printed, never the value. A floor avoids pathological matches on
+    # trivial values like "true".
+    _MIN_VALUE_LEN = 8
+    residual = []
+    for key, value in original_values.items():
+        if len(value) < _MIN_VALUE_LEN:
+            continue
+        for i, line in enumerate(rendered_lines, start=1):
+            if value in line:
+                residual.append((i, key))
+                break
+    if residual:
+        print(
+            "ERROR: refusing to write; a replaced secret's value still appears in the output:",
+            file=sys.stderr,
+        )
+        for number, key in residual:
+            print(f"  line {number}: value of {key} <REDACTED>", file=sys.stderr)
+        return 1
+
+    # Gate 3: check 1 -- a single long base64-looking run anywhere. Only a
     # safe key label is ever printed, never line content.
     single_line_leaks = [
         (i, _safe_label(line))
@@ -154,7 +184,7 @@ def main() -> int:
             print(f"  line {number}: {label} <REDACTED>", file=sys.stderr)
         return 1
 
-    # Gate 3: check 2 -- a wrapped base64 body: two or more consecutive
+    # Gate 4: check 2 -- a wrapped base64 body: two or more consecutive
     # lines that are base64 start to finish (see _B64_LINE above).
     wrapped_leak_line = None
     consecutive = 0
@@ -172,7 +202,7 @@ def main() -> int:
         print(f"  line {wrapped_leak_line}: {label} <REDACTED>", file=sys.stderr)
         return 1
 
-    # Gate 4: check 3 -- no PEM armour of any kind (private key or
+    # Gate 5: check 3 -- no PEM armour of any kind (private key or
     # certificate), not just the one exact "BEGIN PRIVATE KEY" phrase. The
     # armour text itself is a fixed marker, never secret material, so it's
     # safe to print.
