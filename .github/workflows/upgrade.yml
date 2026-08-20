@@ -1,0 +1,323 @@
+name: Upgrade Arize
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_version:
+        description: "Version to upgrade to, for example 11.43.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+  issues: write
+
+concurrency:
+  group: arize-upgrade
+  cancel-in-progress: false
+
+env:
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+  NOTIFY_PROVIDER: ${{ vars.NOTIFY_PROVIDER }}
+  PUSH_REGISTRY: ${{ vars.PUSH_REGISTRY }}
+  APP_BASE_URL: ${{ vars.APP_BASE_URL }}
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+  EKS_CLUSTER_ARN: ${{ vars.EKS_CLUSTER_ARN }}
+
+jobs:
+  announce:
+    name: Announce the release
+    runs-on: ubuntu-latest
+    outputs:
+      thread_ref: ${{ steps.notify.outputs.thread_ref }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install --quiet -e .
+      - name: Post the approval request
+        id: notify
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEPLOYED_VERSION: ${{ vars.DEPLOYED_VERSION }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: |
+          arize-upgrade notify \
+            --stage detected \
+            --target "${{ inputs.target_version }}"
+
+  push-images:
+    name: Pull and push images to ECR
+    needs: announce
+    runs-on: ubuntu-latest
+    environment: image-push
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install --quiet -e .
+
+      - name: Prepare runner disk
+        run: ./scripts/prepare-runner-disk.sh
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to ECR
+        run: |
+          set -euo pipefail
+          aws ecr get-login-password --region "${AWS_REGION}" \
+            | docker login --username AWS --password-stdin "${PUSH_REGISTRY}"
+
+      - name: Download the distribution
+        env:
+          JWT: ${{ secrets.ARIZE_HUB_JWT_RAW }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist && cd dist
+          curl -sSf -H "Authorization: Bearer ${JWT}" \
+            "https://ch.hub.arize.com/dist/get_latest.sh" | sh -
+
+      - name: Verify the bundle is the approved version
+        id: bundle
+        run: |
+          arize-upgrade verify-bundle \
+            --dir dist \
+            --expect "${{ inputs.target_version }}"
+
+      - name: Render values.yaml
+        env:
+          # Credentials -> environment Secrets
+          ARIZE_HUB_JWT: ${{ secrets.ARIZE_HUB_JWT }}
+          ARIZE_CIPHER_KEY: ${{ secrets.ARIZE_CIPHER_KEY }}
+          ARIZE_POSTGRES_PASSWORD: ${{ secrets.ARIZE_POSTGRES_PASSWORD }}
+          ARIZE_SMTP_USER: ${{ secrets.ARIZE_SMTP_USER }}
+          ARIZE_SMTP_PASSWORD: ${{ secrets.ARIZE_SMTP_PASSWORD }}
+          ARIZE_GCP_SA_KEY: ${{ secrets.ARIZE_GCP_SA_KEY }}
+          ARIZE_INTERNAL_TLS_CERT: ${{ secrets.ARIZE_INTERNAL_TLS_CERT }}
+          ARIZE_INTERNAL_TLS_KEY: ${{ secrets.ARIZE_INTERNAL_TLS_KEY }}
+          ARIZE_FLIGHT_TLS_CERT: ${{ secrets.ARIZE_FLIGHT_TLS_CERT }}
+          ARIZE_FLIGHT_TLS_KEY: ${{ secrets.ARIZE_FLIGHT_TLS_KEY }}
+          # Non-secret config -> repository Variables. render-values.sh fails
+          # closed and names any that are missing, so all REQUIRED ones appear
+          # here even though several duplicate workflow-level variables.
+          ARIZE_CLUSTER_ARN: ${{ vars.ARIZE_CLUSTER_ARN }}
+          ARIZE_REGION: ${{ vars.ARIZE_REGION }}
+          ARIZE_GAZETTE_BUCKET: ${{ vars.ARIZE_GAZETTE_BUCKET }}
+          ARIZE_DRUID_BUCKET: ${{ vars.ARIZE_DRUID_BUCKET }}
+          ARIZE_ORGANIZATION_NAME: ${{ vars.ARIZE_ORGANIZATION_NAME }}
+          ARIZE_APP_BASE_URL: ${{ vars.ARIZE_APP_BASE_URL }}
+          ARIZE_EXP_BASE_URL: ${{ vars.ARIZE_EXP_BASE_URL }}
+          ARIZE_RW_BUCKET_ROLE_ARN: ${{ vars.ARIZE_RW_BUCKET_ROLE_ARN }}
+          ARIZE_PUSH_REGISTRY: ${{ vars.ARIZE_PUSH_REGISTRY }}
+          ARIZE_GCP_PROJECT: ${{ vars.ARIZE_GCP_PROJECT }}
+          ARIZE_SMTP_HOST: ${{ vars.ARIZE_SMTP_HOST }}
+          ARIZE_SMTP_SENDER_EMAIL: ${{ vars.ARIZE_SMTP_SENDER_EMAIL }}
+          # Optional tunables: unset here on purpose. render-values.sh applies
+          # its documented defaults and logs which ones it applied. Set the
+          # matching repository Variable to override any of them.
+        run: ./scripts/render-values.sh "${{ steps.bundle.outputs.bundle_dir }}/values.yaml"
+
+      - name: Pull images from the Arize registry
+        working-directory: ${{ steps.bundle.outputs.bundle_dir }}
+        run: ./arize.sh -y -q pull-images
+
+      - name: Push images to ECR
+        working-directory: ${{ steps.bundle.outputs.bundle_dir }}
+        run: ./arize.sh -y -q push-images
+
+      - name: Clean up
+        if: always()
+        run: |
+          set -euo pipefail
+          rm -f dist/*/values.yaml
+          docker image prune -af || true
+          df -h /mnt
+
+  announce-images:
+    name: Request install approval
+    needs: [announce, push-images]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install --quiet -e .
+      - name: Post the second approval request
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: |
+          arize-upgrade notify \
+            --stage images \
+            --target "${{ inputs.target_version }}" \
+            --reply-to "${{ needs.announce.outputs.thread_ref }}"
+
+  install:
+    name: Install on the cluster
+    needs: [announce, announce-images]
+    runs-on: ubuntu-latest
+    environment: cluster-install
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install --quiet -e .
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.15.4
+
+      - name: Point kubectl at the cluster
+        run: |
+          set -euo pipefail
+          # arize.sh runs `kubectl --cluster=$clusterName`, and clusterName is
+          # the full EKS ARN, so the kubeconfig entry must use that exact alias.
+          aws eks update-kubeconfig \
+            --region "${AWS_REGION}" \
+            --name "${EKS_CLUSTER_NAME}" \
+            --alias "${EKS_CLUSTER_ARN}"
+          kubectl config get-contexts
+
+      - name: Download the distribution
+        env:
+          JWT: ${{ secrets.ARIZE_HUB_JWT_RAW }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist && cd dist
+          curl -sSf -H "Authorization: Bearer ${JWT}" \
+            "https://ch.hub.arize.com/dist/get_latest.sh" | sh -
+
+      - name: Verify the bundle is the approved version
+        id: bundle
+        run: |
+          arize-upgrade verify-bundle \
+            --dir dist \
+            --expect "${{ inputs.target_version }}"
+
+      - name: Render values.yaml
+        env:
+          # Credentials -> environment Secrets
+          ARIZE_HUB_JWT: ${{ secrets.ARIZE_HUB_JWT }}
+          ARIZE_CIPHER_KEY: ${{ secrets.ARIZE_CIPHER_KEY }}
+          ARIZE_POSTGRES_PASSWORD: ${{ secrets.ARIZE_POSTGRES_PASSWORD }}
+          ARIZE_SMTP_USER: ${{ secrets.ARIZE_SMTP_USER }}
+          ARIZE_SMTP_PASSWORD: ${{ secrets.ARIZE_SMTP_PASSWORD }}
+          ARIZE_GCP_SA_KEY: ${{ secrets.ARIZE_GCP_SA_KEY }}
+          ARIZE_INTERNAL_TLS_CERT: ${{ secrets.ARIZE_INTERNAL_TLS_CERT }}
+          ARIZE_INTERNAL_TLS_KEY: ${{ secrets.ARIZE_INTERNAL_TLS_KEY }}
+          ARIZE_FLIGHT_TLS_CERT: ${{ secrets.ARIZE_FLIGHT_TLS_CERT }}
+          ARIZE_FLIGHT_TLS_KEY: ${{ secrets.ARIZE_FLIGHT_TLS_KEY }}
+          # Non-secret config -> repository Variables. render-values.sh fails
+          # closed and names any that are missing, so all REQUIRED ones appear
+          # here even though several duplicate workflow-level variables.
+          ARIZE_CLUSTER_ARN: ${{ vars.ARIZE_CLUSTER_ARN }}
+          ARIZE_REGION: ${{ vars.ARIZE_REGION }}
+          ARIZE_GAZETTE_BUCKET: ${{ vars.ARIZE_GAZETTE_BUCKET }}
+          ARIZE_DRUID_BUCKET: ${{ vars.ARIZE_DRUID_BUCKET }}
+          ARIZE_ORGANIZATION_NAME: ${{ vars.ARIZE_ORGANIZATION_NAME }}
+          ARIZE_APP_BASE_URL: ${{ vars.ARIZE_APP_BASE_URL }}
+          ARIZE_EXP_BASE_URL: ${{ vars.ARIZE_EXP_BASE_URL }}
+          ARIZE_RW_BUCKET_ROLE_ARN: ${{ vars.ARIZE_RW_BUCKET_ROLE_ARN }}
+          ARIZE_PUSH_REGISTRY: ${{ vars.ARIZE_PUSH_REGISTRY }}
+          ARIZE_GCP_PROJECT: ${{ vars.ARIZE_GCP_PROJECT }}
+          ARIZE_SMTP_HOST: ${{ vars.ARIZE_SMTP_HOST }}
+          ARIZE_SMTP_SENDER_EMAIL: ${{ vars.ARIZE_SMTP_SENDER_EMAIL }}
+          # Optional tunables: unset here on purpose. render-values.sh applies
+          # its documented defaults and logs which ones it applied. Set the
+          # matching repository Variable to override any of them.
+        run: ./scripts/render-values.sh "${{ steps.bundle.outputs.bundle_dir }}/values.yaml"
+
+      - name: Install
+        working-directory: ${{ steps.bundle.outputs.bundle_dir }}
+        run: ./arize.sh -y -q -t 3600 install
+
+      - name: Wait for the cluster to report healthy
+        working-directory: ${{ steps.bundle.outputs.bundle_dir }}
+        run: ./arize.sh -y -q install-status
+
+      - name: Clean up
+        if: always()
+        run: rm -f dist/*/values.yaml
+
+  record:
+    name: Report the outcome
+    needs: [announce, push-images, install]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install --quiet -e .
+
+      - name: Determine the outcome
+        id: outcome
+        run: |
+          set -euo pipefail
+          if [ "${{ needs.install.result }}" = "success" ]; then
+            echo "value=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=failure" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post the result
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: |
+          arize-upgrade notify \
+            --stage result \
+            --target "${{ inputs.target_version }}" \
+            --outcome "${{ steps.outcome.outputs.value }}" \
+            --reply-to "${{ needs.announce.outputs.thread_ref }}"
+
+      - name: Record the deployment
+        if: steps.outcome.outputs.value == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          arize-upgrade record --version "${{ inputs.target_version }}"
+
+      - name: Open a failure issue
+        if: steps.outcome.outputs.value == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET: ${{ inputs.target_version }}
+        run: |
+          set -euo pipefail
+          gh issue create \
+            --title "Arize upgrade to ${TARGET} failed" \
+            --label "arize-upgrade" \
+            --body "$(cat <<EOF
+          The upgrade to \`${TARGET}\` did not complete.
+
+          - Run: ${RUN_URL}
+          - Image push: ${{ needs['push-images'].result }}
+          - Install: ${{ needs.install.result }}
+
+          There is no automatic rollback. The cluster may be partially upgraded.
+          Review the run logs before retrying.
+          EOF
+          )"
