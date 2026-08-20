@@ -9,3 +9,6 @@ arize-distribution-*/
 !docs/
 .superpowers/
 *.egg-info/
+
+# ~/.gitignore_global excludes CLAUDE.md; this repo tracks it deliberately
+!CLAUDE.md
