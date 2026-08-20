@@ -182,6 +182,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: cluster-install
     timeout-minutes: 240
+    outputs:
+      touched: ${{ steps.mark.outputs.touched }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -277,6 +279,10 @@ jobs:
           # matching repository Variable to override any of them.
         run: ./scripts/render-values.sh "${{ steps.bundle.outputs.bundle_dir }}/values.yaml"
 
+      - name: Mark the cluster as about to be modified
+        id: mark
+        run: echo "touched=true" >> "$GITHUB_OUTPUT"
+
       - name: Install
         working-directory: ${{ steps.bundle.outputs.bundle_dir }}
         run: ./arize.sh -y -q -t 3600 install
@@ -307,17 +313,28 @@ jobs:
 
       - name: Determine the outcome
         id: outcome
+        env:
+          INSTALL_RESULT: ${{ needs.install.result }}
+          INSTALL_TOUCHED: ${{ needs.install.outputs.touched }}
         run: |
           set -euo pipefail
-          case "${{ needs.install.result }}" in
-            success)  echo "value=success" >> "$GITHUB_OUTPUT"
-                      echo "attempted=true"  >> "$GITHUB_OUTPUT" ;;
-            skipped|cancelled)
-                      echo "value=failure" >> "$GITHUB_OUTPUT"
-                      echo "attempted=false" >> "$GITHUB_OUTPUT" ;;
-            *)        echo "value=failure" >> "$GITHUB_OUTPUT"
-                      echo "attempted=true"  >> "$GITHUB_OUTPUT" ;;
-          esac
+          if [ "${INSTALL_RESULT}" = "success" ]; then
+            echo "value=success"  >> "$GITHUB_OUTPUT"
+            echo "attempted=true" >> "$GITHUB_OUTPUT"
+          elif [ "${INSTALL_RESULT}" = "skipped" ] \
+            || { [ "${INSTALL_RESULT}" = "failure" ] && [ "${INSTALL_TOUCHED}" != "true" ]; }; then
+            # Never reached the install step: an upstream job did not succeed, or a
+            # reviewer rejected the cluster-install approval (GitHub resolves a
+            # rejected deployment as "failure", not "skipped").
+            echo "value=failure"   >> "$GITHUB_OUTPUT"
+            echo "attempted=false" >> "$GITHUB_OUTPUT"
+          else
+            # Everything else -- including "cancelled", which covers a job killed
+            # mid-migration by timeout or manual cancel. Assume the cluster was
+            # modified; withholding the rollback warning is the dangerous error.
+            echo "value=failure"  >> "$GITHUB_OUTPUT"
+            echo "attempted=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Post the result
         env:
@@ -347,19 +364,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET: ${{ inputs.target_version }}
           ATTEMPTED: ${{ steps.outcome.outputs.attempted }}
+          PUSH_IMAGES_RESULT: ${{ needs['push-images'].result }}
+          ANNOUNCE_IMAGES_RESULT: ${{ needs['announce-images'].result }}
+          INSTALL_RESULT: ${{ needs.install.result }}
         run: |
           set -euo pipefail
           if [ "${ATTEMPTED}" = "false" ]; then
             body=$(cat <<EOF
-          The upgrade to \`${TARGET}\` did not start: the install job was skipped
-          or cancelled (a reviewer may have declined the approval gate, the
-          approval timed out, or an upstream job failed). The cluster was not
-          contacted and was not modified.
+          The upgrade to \`${TARGET}\` did not start: either an upstream job did not
+          succeed, or a reviewer declined the cluster-install approval. The cluster
+          was not contacted and was not modified.
 
           - Run: ${RUN_URL}
-          - Image push: ${{ needs['push-images'].result }}
-          - Request install approval: ${{ needs['announce-images'].result }}
-          - Install: ${{ needs.install.result }}
+          - Image push: ${PUSH_IMAGES_RESULT}
+          - Request install approval: ${ANNOUNCE_IMAGES_RESULT}
+          - Install: ${INSTALL_RESULT}
 
           Review the run logs to see why the install did not proceed.
           EOF
@@ -369,9 +388,9 @@ jobs:
           The upgrade to \`${TARGET}\` did not complete.
 
           - Run: ${RUN_URL}
-          - Image push: ${{ needs['push-images'].result }}
-          - Request install approval: ${{ needs['announce-images'].result }}
-          - Install: ${{ needs.install.result }}
+          - Image push: ${PUSH_IMAGES_RESULT}
+          - Request install approval: ${ANNOUNCE_IMAGES_RESULT}
+          - Install: ${INSTALL_RESULT}
 
           There is no automatic rollback. The cluster may be partially upgraded.
           Review the run logs before retrying.
