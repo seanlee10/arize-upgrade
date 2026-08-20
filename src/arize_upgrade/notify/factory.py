@@ -39,6 +39,16 @@ def build_notifier(env: Mapping[str, str]) -> Notifier:
             )
         return TeamsNotifier(webhook_url=webhook)
 
+    if provider == "slack_webhook":
+        from .slack_webhook import SlackWebhookNotifier
+
+        webhook = env.get("SLACK_WEBHOOK_URL")
+        if not webhook:
+            raise MissingProviderConfig(
+                "NOTIFY_PROVIDER=slack_webhook requires SLACK_WEBHOOK_URL"
+            )
+        return SlackWebhookNotifier(webhook_url=webhook)
+
     raise UnknownProvider(
-        f"NOTIFY_PROVIDER must be 'slack' or 'teams', got {provider!r}"
+        f"NOTIFY_PROVIDER must be 'slack', 'teams', or 'slack_webhook', got {provider!r}"
     )

@@ -35,8 +35,8 @@ Non-secret. Two groups: the pipeline's own workflow variables, and the `ARIZE_*`
 
 | Variable | Example | Purpose |
 |---|---|---|
-| `NOTIFY_PROVIDER` | `slack` | `slack` or `teams`. Exactly one; an unknown value is a hard error. |
-| `SLACK_CHANNEL_ID` | `C0123456789` | Slack only. |
+| `NOTIFY_PROVIDER` | `slack` | `slack`, `teams`, or `slack_webhook`. Exactly one; an unknown value is a hard error. |
+| `SLACK_CHANNEL_ID` | `C0123456789` | `slack` only. |
 | `PUSH_REGISTRY` | `123456789012.dkr.ecr.us-east-1.amazonaws.com` | ECR registry host, used when composing chat messages. |
 | `APP_BASE_URL` | `https://arize-app.example.com` | Linked from the result message. |
 | `AWS_REGION` | `us-east-1` | |
@@ -108,7 +108,7 @@ Set on **both** the `image-push` and `cluster-install` environments:
 
 `ARIZE_HUB_JWT_RAW` and `ARIZE_HUB_JWT` are two encodings of the same credential: `arize.sh` does `license=$(echo -n $hubJwt | base64 -d)`, so the value in `values.yaml` is base64-encoded, while `get_latest.sh` wants the raw JWT in an `Authorization: Bearer` header.
 
-`check-release.yml` additionally needs repository-level `SLACK_BOT_TOKEN` or `TEAMS_WEBHOOK_URL`.
+`check-release.yml` additionally needs repository-level `SLACK_BOT_TOKEN`, `TEAMS_WEBHOOK_URL`, or `SLACK_WEBHOOK_URL`, matching whichever provider is selected.
 
 ### 3. Environments
 
@@ -124,6 +124,8 @@ Create two environments, each with **required reviewers**:
 **Slack:** create an app with the `chat:write` bot scope, install it, invite it to the channel, then set `SLACK_BOT_TOKEN` (`xoxb-…`) and `SLACK_CHANNEL_ID`. All four messages of an upgrade thread under the first.
 
 **Teams:** in the target channel add a **Workflows** flow from the "post to a channel when a webhook request is received" template, then set `TEAMS_WEBHOOK_URL`. Microsoft retired Office 365 Connectors, so the older `outlook.office.com/webhook/...` URLs are not the path here. Teams webhooks cannot thread, so each stage arrives as its own self-contained card.
+
+**Slack (incoming webhook):** if your Slack app only carries the `incoming-webhook` scope rather than `chat:write`, use `NOTIFY_PROVIDER=slack_webhook` instead of `slack`. Create an incoming webhook (Slack app settings → **Incoming Webhooks** → **Add New Webhook to Workspace**) and set `SLACK_WEBHOOK_URL` (e.g. `https://hooks.slack.com/services/T000/B000/xxxx`) — nothing else. No bot token, no channel invite, and no `SLACK_CHANNEL_ID`, since the channel is fixed at webhook creation. Like Teams, incoming webhooks cannot thread, so the four upgrade messages arrive as separate posts rather than a thread; use the bot-token `slack` provider instead if you want threading.
 
 ### 5. Values template _(pending)_
 

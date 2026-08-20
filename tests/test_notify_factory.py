@@ -9,6 +9,7 @@ from arize_upgrade.notify.factory import (
     build_notifier,
 )
 from arize_upgrade.notify.slack import SlackNotifier
+from arize_upgrade.notify.slack_webhook import SlackWebhookNotifier
 from arize_upgrade.notify.teams import TeamsNotifier
 
 
@@ -31,6 +32,31 @@ def test_builds_teams_notifier():
         }
     )
     assert isinstance(notifier, TeamsNotifier)
+
+
+def test_builds_slack_webhook_notifier():
+    notifier = build_notifier(
+        {
+            "NOTIFY_PROVIDER": "slack_webhook",
+            "SLACK_WEBHOOK_URL": "https://hooks.slack.com/services/T000/B000/xxxx",
+        }
+    )
+    assert isinstance(notifier, SlackWebhookNotifier)
+
+
+def test_slack_webhook_without_url_raises():
+    with pytest.raises(MissingProviderConfig):
+        build_notifier({"NOTIFY_PROVIDER": "slack_webhook"})
+
+
+def test_slack_webhook_provider_is_case_insensitive():
+    notifier = build_notifier(
+        {
+            "NOTIFY_PROVIDER": "SLACK_WEBHOOK",
+            "SLACK_WEBHOOK_URL": "https://hooks.slack.com/services/T000/B000/xxxx",
+        }
+    )
+    assert isinstance(notifier, SlackWebhookNotifier)
 
 
 def test_provider_is_case_insensitive():
