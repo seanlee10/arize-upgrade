@@ -2913,6 +2913,7 @@ jobs:
 
       - name: Render values.yaml
         env:
+          # Credentials -> environment Secrets
           ARIZE_HUB_JWT: ${{ secrets.ARIZE_HUB_JWT }}
           ARIZE_CIPHER_KEY: ${{ secrets.ARIZE_CIPHER_KEY }}
           ARIZE_POSTGRES_PASSWORD: ${{ secrets.ARIZE_POSTGRES_PASSWORD }}
@@ -2923,6 +2924,24 @@ jobs:
           ARIZE_INTERNAL_TLS_KEY: ${{ secrets.ARIZE_INTERNAL_TLS_KEY }}
           ARIZE_FLIGHT_TLS_CERT: ${{ secrets.ARIZE_FLIGHT_TLS_CERT }}
           ARIZE_FLIGHT_TLS_KEY: ${{ secrets.ARIZE_FLIGHT_TLS_KEY }}
+          # Non-secret config -> repository Variables. render-values.sh fails
+          # closed and names any that are missing, so all REQUIRED ones appear
+          # here even though several duplicate workflow-level variables.
+          ARIZE_CLUSTER_ARN: ${{ vars.ARIZE_CLUSTER_ARN }}
+          ARIZE_REGION: ${{ vars.ARIZE_REGION }}
+          ARIZE_GAZETTE_BUCKET: ${{ vars.ARIZE_GAZETTE_BUCKET }}
+          ARIZE_DRUID_BUCKET: ${{ vars.ARIZE_DRUID_BUCKET }}
+          ARIZE_ORGANIZATION_NAME: ${{ vars.ARIZE_ORGANIZATION_NAME }}
+          ARIZE_APP_BASE_URL: ${{ vars.ARIZE_APP_BASE_URL }}
+          ARIZE_EXP_BASE_URL: ${{ vars.ARIZE_EXP_BASE_URL }}
+          ARIZE_RW_BUCKET_ROLE_ARN: ${{ vars.ARIZE_RW_BUCKET_ROLE_ARN }}
+          ARIZE_PUSH_REGISTRY: ${{ vars.ARIZE_PUSH_REGISTRY }}
+          ARIZE_GCP_PROJECT: ${{ vars.ARIZE_GCP_PROJECT }}
+          ARIZE_SMTP_HOST: ${{ vars.ARIZE_SMTP_HOST }}
+          ARIZE_SMTP_SENDER_EMAIL: ${{ vars.ARIZE_SMTP_SENDER_EMAIL }}
+          # Optional tunables: unset here on purpose. render-values.sh applies
+          # its documented defaults and logs which ones it applied. Set the
+          # matching repository Variable to override any of them.
         run: ./scripts/render-values.sh "${{ steps.bundle.outputs.bundle_dir }}/values.yaml"
 
       - name: Pull images from the Arize registry
@@ -3014,6 +3033,7 @@ jobs:
 
       - name: Render values.yaml
         env:
+          # Credentials -> environment Secrets
           ARIZE_HUB_JWT: ${{ secrets.ARIZE_HUB_JWT }}
           ARIZE_CIPHER_KEY: ${{ secrets.ARIZE_CIPHER_KEY }}
           ARIZE_POSTGRES_PASSWORD: ${{ secrets.ARIZE_POSTGRES_PASSWORD }}
@@ -3024,6 +3044,24 @@ jobs:
           ARIZE_INTERNAL_TLS_KEY: ${{ secrets.ARIZE_INTERNAL_TLS_KEY }}
           ARIZE_FLIGHT_TLS_CERT: ${{ secrets.ARIZE_FLIGHT_TLS_CERT }}
           ARIZE_FLIGHT_TLS_KEY: ${{ secrets.ARIZE_FLIGHT_TLS_KEY }}
+          # Non-secret config -> repository Variables. render-values.sh fails
+          # closed and names any that are missing, so all REQUIRED ones appear
+          # here even though several duplicate workflow-level variables.
+          ARIZE_CLUSTER_ARN: ${{ vars.ARIZE_CLUSTER_ARN }}
+          ARIZE_REGION: ${{ vars.ARIZE_REGION }}
+          ARIZE_GAZETTE_BUCKET: ${{ vars.ARIZE_GAZETTE_BUCKET }}
+          ARIZE_DRUID_BUCKET: ${{ vars.ARIZE_DRUID_BUCKET }}
+          ARIZE_ORGANIZATION_NAME: ${{ vars.ARIZE_ORGANIZATION_NAME }}
+          ARIZE_APP_BASE_URL: ${{ vars.ARIZE_APP_BASE_URL }}
+          ARIZE_EXP_BASE_URL: ${{ vars.ARIZE_EXP_BASE_URL }}
+          ARIZE_RW_BUCKET_ROLE_ARN: ${{ vars.ARIZE_RW_BUCKET_ROLE_ARN }}
+          ARIZE_PUSH_REGISTRY: ${{ vars.ARIZE_PUSH_REGISTRY }}
+          ARIZE_GCP_PROJECT: ${{ vars.ARIZE_GCP_PROJECT }}
+          ARIZE_SMTP_HOST: ${{ vars.ARIZE_SMTP_HOST }}
+          ARIZE_SMTP_SENDER_EMAIL: ${{ vars.ARIZE_SMTP_SENDER_EMAIL }}
+          # Optional tunables: unset here on purpose. render-values.sh applies
+          # its documented defaults and logs which ones it applied. Set the
+          # matching repository Variable to override any of them.
         run: ./scripts/render-values.sh "${{ steps.bundle.outputs.bundle_dir }}/values.yaml"
 
       - name: Install
